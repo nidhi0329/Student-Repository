@@ -12,29 +12,112 @@ import sys
 import statistics
 
 
+class Major:
+    """In this class, we will be creating an instance of Major.
+    """
+    __titles__ = ['_major', '_required', '_electives']
+    field_name: List[str] = ["Major", "Required Courses", "Elective Courses"]
+
+    def __init__(self, major: str) -> None:
+        """
+        Here we will be initializing the variables.
+        """
+        self._major: str = major
+        self._required: List[str] = list()
+        self._electives: List[str] = list()
+
+    def add_course(self, type: str, course: str) -> None:
+        """
+        In this method, we will add course based on type (Required/Elective)
+        """
+        if type == "R":
+            self._required.append(course)
+        elif type == "E":
+            self._electives.append(course)
+        else:
+            raise ValueError("Course not found")
+
+    def required_course(self) -> List[str]:
+        """In this functions, we will return the required courses.
+        """
+        return list(self._required)
+
+    def electives_course(self) -> List[str]:
+        """In this functions, we will return the elective courses.
+        """
+        return list(self._electives)
+
+    def detail(self) -> List[str]:
+        """
+        In this function, we will be returning the outputs.
+        """
+        return [self._major, sorted(self._required), sorted(self._electives)]
+
+
 class Student:
     """In this class, we will be creating an instance of a student.
     """
-    __titles__ = ['_cwid', '_name', '_courses']
-    field_name: List[str] = ["Cwid", "Name", "Completed Courses"]
+    __titles__ = ['_cwid', '_name', '_major', '_courses',
+                  '_remaining_required', '_remaining_electives', '_fail',
+                  '_grade']
+    field_name: List[str] = ["Cwid", "Name", "Major", "Completed Courses",
+                             "Remaining Required", "Remaining Elective", "GPA"]
 
-    def __init__(self, cwid: str, name: str, major: str) -> None:
+    def __init__(
+            self,
+            cwid: str,
+            name: str,
+            major: str,
+            required: List[str],
+            electives: List[str]) -> None:
         """In this method, we will be initializing all the fields related to a student.
         """
         self._cwid: str = cwid
         self._name: str = name
         self._major: str = major
         self._courses: Dict[str, str] = dict()
+        self._remaining_required: List[str] = required
+        self._remaining_electives: List[str] = electives
+        self._fail: List[str] = ["C-", "D+", "D", "D-", "F"]
+        self._grade: Dict[str, float] = {"A": 4.0, "A-": 3.75, "B+": 3.25,
+                                         "B": 3.0, "B-": 2.75, "C+": 2.25,
+                                         "C": 2.0, "C-": 0.0, "D+": 0.0,
+                                         "D": 0.0, "D-": 0.0, "F": 0.0}
 
     def student_courses(self, course: str, grade: str) -> None:
         """In this method, we will add courses for each student in the dictionary.
         """
-        self._courses[course] = grade
+        if grade not in self._fail:
+            self._courses[course] = grade
+        if course in self._remaining_required:
+            self._remaining_required.remove(course)
+        if course in self._remaining_electives:
+            self._remaining_electives.clear()
+
+    def _gpa(self) -> float:
+        """In this method, we will compute the GPA based on the courses
+        """
+        GPA: List[float] = list()
+        for a1 in self._courses.values():
+            if a1 in self._grade:
+                GPA.append(self._grade[a1])
+            else:
+                print("grade is not valid")
+        if len(GPA) > 0:
+            gpa: float = statistics.mean(GPA)
+        else:
+            return 0.0
+
+        return format(gpa, '.2f')
 
     def detail(self) -> List[str]:
         """In this function, we will be returning the outputs.
         """
-        return [self._cwid, self._name, sorted(self._courses.keys())]
+        return [self._cwid, self._name, self._major,
+                sorted(self._courses.keys()),
+                sorted(self._remaining_required),
+                sorted(self._remaining_electives),
+                self._gpa()]
 
 
 class Instructor:
@@ -99,9 +182,25 @@ class Repository:
         self._path: str = path
         self._students: Dict[str, Student] = dict()
         self._instructors: Dict[str, Instructor] = dict()
+        self._majors: Dict[str, Major] = dict()
+        self._majors_detail()
         self._students_detail()
         self._instructors_detail()
         self._grades_detail()
+
+    def _majors_detail(self) -> None:
+        """
+        Reading each major and creating its instance
+        """
+        try:
+            for major, type, course in self.file_reader(os.path.join(self._path,
+                                                                     "majors.txt"),
+                                                        3, sep='\t', header=True):
+                if major not in self._majors:
+                    self._majors[major] = Major(major)
+                self._majors[major].add_course(type, course)
+        except FileNotFoundError:
+            print(f"Cannot open file at {self._path}")
 
     def _students_detail(self) -> None:
         """
@@ -111,10 +210,13 @@ class Repository:
         try:
             for cwid, name, major in self.file_reader(os.path.join(self._path,
                                                                    "students.txt"),
-                                                      3, sep='\t', header=False):
+                                                      3, sep=';', header=True):
                 if cwid in self._students:
                     print("Student with CWID is already in the file")
-                self._students[cwid] = Student(cwid, name, major)
+                required: List[str] = self._majors[major].required_course()
+                electives: List[str] = self._majors[major].electives_course()
+                self._students[cwid] = Student(
+                    cwid, name, major, required, electives)
         except FileNotFoundError:
             print(f"Cannot open file at {self._path}")
         except ValueError:
@@ -144,15 +246,17 @@ class Repository:
         """
         try:
             for stud_cwid, course, grade, prof_cwid in self.file_reader(
-                    os.path.join(self._path, "grades.txt"), 4, sep='\t', header=False):
+                    os.path.join(self._path, "grades.txt"), 4, sep='|', header=True):
                 if stud_cwid in self._students:
                     # handle the key error if a new student
                     self._students[stud_cwid].student_courses(course, grade)
+
                 else:
                     print(f"No such Student with {stud_cwid}")
                 if prof_cwid in self._instructors:
                     # handle the key error if a new instructor
                     self._instructors[prof_cwid].instructor_courses(course)
+
                 else:
                     print(f"No such Instructor with {prof_cwid}")
 
@@ -160,6 +264,18 @@ class Repository:
             print(f"Cannot open file at {self._path}")
         except ValueError:
             print("Wrong input")
+
+    def major_pt(self) -> PrettyTable:
+        """
+        In this function, we will be creating pretty table for Major
+        """
+        pt: PrettyTable = PrettyTable()
+        pt.field_names = Major.field_name
+        for i in self._majors.values():
+            pt.add_row(i.detail())
+        print("Majors Summary")
+        print(pt)
+        return pt
 
     def student_pt(self) -> PrettyTable:
         """
@@ -189,7 +305,7 @@ class Repository:
 
 def main():
     stevens: Repository = Repository(
-        "C:\\Users\\Nidhi\\Desktop\\SEM3\\810\\HW09")
+        "C:\\Users\\Nidhi\\Desktop\\SEM3\\810\\HW10")
 
 
 if __name__ == '__main__':
