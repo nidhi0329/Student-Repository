@@ -10,13 +10,15 @@ from prettytable import PrettyTable
 import os
 import sys
 import statistics
+import sqlite3
 
 
 class Major:
-    """In this class, we will be creating an instance of Major.
+    """
+    In this class, we will be creating an instance of Major.
     """
     __titles__ = ['_major', '_required', '_electives']
-    field_name: List[str] = ["Major", "Required Courses", "Elective Courses"]
+    field_name: List[str] = ["Major", "Required Courses", "Electives"]
 
     def __init__(self, major: str) -> None:
         """
@@ -38,12 +40,14 @@ class Major:
             raise ValueError("Course not found")
 
     def required_course(self) -> List[str]:
-        """In this functions, we will return the required courses.
+        """
+        In this functions, we will return the required courses.
         """
         return list(self._required)
 
     def electives_course(self) -> List[str]:
-        """In this functions, we will return the elective courses.
+        """
+        In this functions, we will return the elective courses.
         """
         return list(self._electives)
 
@@ -55,27 +59,24 @@ class Major:
 
 
 class Student:
-    """In this class, we will be creating an instance of a student.
+    """
+    In this class, we will be creating an instance of a student.
     """
     __titles__ = ['_cwid', '_name', '_major', '_courses',
                   '_remaining_required', '_remaining_electives', '_fail',
                   '_grade']
-    field_name: List[str] = ["Cwid", "Name", "Major", "Completed Courses",
-                             "Remaining Required", "Remaining Elective", "GPA"]
+    field_name: List[str] = ["CWID", "Name", "Major", "Completed Courses",
+                             "Remaining Required", "Remaining Electives", "GPA"]
 
-    def __init__(
-            self,
-            cwid: str,
-            name: str,
-            major: str,
-            required: List[str],
-            electives: List[str]) -> None:
-        """In this method, we will be initializing all the fields related to a student.
+    def __init__(self, cwid: str, name: str, major: str, required: List[str], electives: List[str]) -> None:
+        """
+        In this method, we will be initializing all the fields related to a student.
         """
         self._cwid: str = cwid
         self._name: str = name
         self._major: str = major
         self._courses: Dict[str, str] = dict()
+        self._courses_fail: Dict[str, str] = dict()
         self._remaining_required: List[str] = required
         self._remaining_electives: List[str] = electives
         self._fail: List[str] = ["C-", "D+", "D", "D-", "F"]
@@ -85,20 +86,30 @@ class Student:
                                          "D": 0.0, "D-": 0.0, "F": 0.0}
 
     def student_courses(self, course: str, grade: str) -> None:
-        """In this method, we will add courses for each student in the dictionary.
+        """
+        In this method, we will add courses for each student in the dictionary.
         """
         if grade not in self._fail:
             self._courses[course] = grade
+        if grade in self._fail:
+            self._courses_fail[course] = grade
+            return
         if course in self._remaining_required:
             self._remaining_required.remove(course)
         if course in self._remaining_electives:
             self._remaining_electives.clear()
 
     def _gpa(self) -> float:
-        """In this method, we will compute the GPA based on the courses
+        """
+        In this method, we will compute the GPA based on the courses
         """
         GPA: List[float] = list()
         for a1 in self._courses.values():
+            if a1 in self._grade:
+                GPA.append(self._grade[a1])
+            else:
+                print("grade is not valid")
+        for a1 in self._courses_fail.values():
             if a1 in self._grade:
                 GPA.append(self._grade[a1])
             else:
@@ -111,7 +122,8 @@ class Student:
         return format(gpa, '.2f')
 
     def detail(self) -> List[str]:
-        """In this function, we will be returning the outputs.
+        """
+        In this function, we will be returning the outputs.
         """
         return [self._cwid, self._name, self._major,
                 sorted(self._courses.keys()),
@@ -121,13 +133,15 @@ class Student:
 
 
 class Instructor:
-    """In this class, we will be creating an instance of an instructor.
+    """
+    In this class, we will be creating an instance of an instructor.
     """
     __titles__ = ['_cwid', '_name', '_dept', '_courses']
-    field_name: List[str] = ["Cwid", "Name", "Department", "Course", "Count"]
+    field_name: List[str] = ["CWID", "Name", "Dept", "Course", "Students"]
 
     def __init__(self, cwid: str, name: str, dept: str) -> None:
-        """In this method, we will be initializing all the fields related to an
+        """
+        In this method, we will be initializing all the fields related to an
         Instructor
         """
         self._cwid: str = cwid
@@ -136,12 +150,14 @@ class Instructor:
         self._courses: DefaultDict[str, int] = defaultdict(int)
 
     def instructor_courses(self, course: str) -> None:
-        """In this method, we will add course name and number of students enrolled.
+        """
+        In this method, we will add course name and number of students enrolled.
         """
         self._courses[course] += 1
 
     def detail(self) -> List[str]:
-        """In this function, we will be returning the outputs.
+        """
+        In this function, we will be returning the outputs.
         """
 
         for course, count in self._courses.items():
@@ -152,10 +168,11 @@ class Repository:
     """
     In this class, we will be creating a repository of student and instructor in an University
     """
-    __titles__ = ['_path', '_students', '_instructors', '_majors']
+    __titles__ = ['_path', '_dbpath',  '_students', '_instructors', '_majors']
 
     def file_reader(self, path: str, fields: int, sep: str = ',', header: bool = False) -> Iterator[List[str]]:
-        """In this function, we will implement a generator that will yield new line of a file on call of next
+        """
+        In this function, we will implement a generator that will yield new line of a file on call of next
         """
         try:
             fp: IO = open(path, 'r')
@@ -177,9 +194,10 @@ class Repository:
                     else:
                         header = False
 
-    def __init__(self, path: str, ptables: bool = True) -> None:
+    def __init__(self, path: str, dbpath: str, ptables: bool = True) -> None:
         """In this method, we will be initializing all the fields related to Repository"""
         self._path: str = path
+        self._dbpath: str = dbpath
         self._students: Dict[str, Student] = dict()
         self._instructors: Dict[str, Instructor] = dict()
         self._majors: Dict[str, Major] = dict()
@@ -210,7 +228,7 @@ class Repository:
         try:
             for cwid, name, major in self.file_reader(os.path.join(self._path,
                                                                    "students.txt"),
-                                                      3, sep=';', header=True):
+                                                      3, sep='\t', header=True):
                 if cwid in self._students:
                     print("Student with CWID is already in the file")
                 required: List[str] = self._majors[major].required_course()
@@ -231,7 +249,7 @@ class Repository:
             for cwid, name, dept in self.file_reader(os.path.join
                                                      (self._path,
                                                       "instructors.txt"),
-                                                     3, sep='|', header=True):
+                                                     3, sep='\t', header=True):
                 if cwid in self._instructors:
                     print("Instructor with CWID is already in the file")
                 self._instructors[cwid] = Instructor(cwid, name, dept)
@@ -246,7 +264,7 @@ class Repository:
         """
         try:
             for stud_cwid, course, grade, prof_cwid in self.file_reader(
-                    os.path.join(self._path, "grades.txt"), 4, sep='|', header=True):
+                    os.path.join(self._path, "grades.txt"), 4, sep='\t', header=True):
                 if stud_cwid in self._students:
                     # handle the key error if a new student
                     self._students[stud_cwid].student_courses(course, grade)
@@ -302,10 +320,31 @@ class Repository:
         print(pt)
         return pt
 
+    def grades_pt(self, dbpath: str) -> PrettyTable:
+        """
+        Printing the query into a pretty table
+        """
+        pt: PrettyTable = PrettyTable()
+        pt.field_names = ["Name", "CWID", "Course", "Grade", "Instructor"]
+        try:
+            db: sqlite3.Connection = sqlite3.connect(dbpath)
+        except sqlite3.OperationalError:
+            print(f"Unable to open database")
+        else:
+            try:
+                for i in db.execute(
+                        "select s.Name, s.CWID, g.Course,  g.Grade, i.Name from students s join grades g on s.CWID=StudentCWID join instructors i on InstructorCWID=i.CWID order by s.Name"):
+                    pt.add_row(i)
+            except sqlite3.Error as e:
+                print(e)
+        print("\nStudent Grade Summary")
+        print(pt)
+        return pt
+
 
 def main():
     stevens: Repository = Repository(
-        "C:\\Users\\Nidhi\\Desktop\\SEM3\\810\\HW10")
+        "C:\\Users\\Nidhi\\Desktop\\SEM3\\810\\HW11", "C:\\Users\\Nidhi\\Desktop\\SEM3\\810\\HW11\\810_startup.db")
 
 
 if __name__ == '__main__':
